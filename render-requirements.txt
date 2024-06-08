@@ -2,3 +2,4 @@ fastapi
 selenium
 webdriver_manager
 zenrows
+bs4

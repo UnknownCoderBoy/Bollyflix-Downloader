@@ -12,10 +12,23 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from urllib.parse import urlparse, parse_qs
 
+#Cloudflare Unblocking
+import requests
+from bs4 import BeautifulSoup
+from zenrows import ZenRowsClient
+
 options = Options()
 options.add_argument("--headless")
 options.add_argument("--no-sandbox")
 options.add_argument("--disable-dev-shm-usage")
+options.add_argument("--incognito")
+options.add_argument("--ignore-certificate-errors")
+options.add_argument("--remote-allow-origins=*")
+options.add_argument("--disable-blink-features=AutomationControlled")
+ 
+options.add_experimental_option("excludeSwitches", ["enable-automation"]) 
+options.add_experimental_option("useAutomationExtension", False) 
+
 driver = webdriver.Chrome(options=options)
 
 
@@ -141,17 +154,25 @@ def get_movie_link(Model: Links):
         yield "Download button Clicked"
 
         # GDFlix Page
+        
+        gdflix_url = driver.current_url
 
-        switch_to_new_window(driver, original_window)
-
-        page_loading(driver, "", By.CLASS_NAME, "card-body")
-
-        download_links = driver.find_elements(By.TAG_NAME, "a")
-
+        yield f"GDFlix Url {gdflix_url}"
+        
+        client = ZenRowsClient("2bfdb8003631ceb3f665e239ce6d9cfdc5e79945")
+        params = {"js_render":"true"}
+        response = client.get(gdflix_url, params=params)
+        
+        soup = BeautifulSoup(response.content, "html.parser")
+        
+        download_links = soup.find_all("a")
         for link in download_links:
-            if "drivebot" in link.get_attribute("href"):
-                drive_bot_link = link.get_attribute("href")
-                break
+              if "drivebot" in link.get("href"):
+                  drive_bot_link = link.get("href")
+                  break
+              else:
+                  yield "Not Drivebot Url"
+                  return
 
         # DriveBot Page
 

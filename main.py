@@ -16,9 +16,7 @@ options = Options()
 options.add_argument("--headless")
 options.add_argument("--no-sandbox")
 options.add_argument("--disable-dev-shm-usage")
-driver = webdriver.Chrome(
-    service=Service(ChromeDriverManager().install()), options=options
-)
+driver = webdriver.Chrome(options=options)
 
 
 def page_loading(driver, url="", by=By.ID, value=""):

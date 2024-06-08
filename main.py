@@ -12,23 +12,16 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from urllib.parse import urlparse, parse_qs
 
-#Cloudflare Unblocking
-import requests
+# Cloudflare Unblocking
 from bs4 import BeautifulSoup
 from zenrows import ZenRowsClient
+
 
 def create_driver():
     options = Options()
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--incognito")
-    options.add_argument("--ignore-certificate-errors")
-    options.add_argument("--remote-allow-origins=*")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    
-    options.add_experimental_option("excludeSwitches", ["enable-automation"]) 
-    options.add_experimental_option("useAutomationExtension", False)
 
     return webdriver.Chrome(options=options)
 
@@ -136,8 +129,9 @@ app = FastAPI()
 @app.post("/GetMovieStreamLink")
 def get_movie_link(Model: Links):
     driver = create_driver()
-    
+
     try:
+
         async def generate():
 
             page_loading(driver, Model.MovieLink, By.ID, "lite-human-verif-button")
@@ -164,13 +158,13 @@ def get_movie_link(Model: Links):
             gdflix_url = driver.current_url
 
             yield f"GDFlix Url {gdflix_url}"
-            
+
             client = ZenRowsClient("2bfdb8003631ceb3f665e239ce6d9cfdc5e79945")
-            params = {"js_render":"true"}
+            params = {"js_render": "true"}
             response = client.get(gdflix_url, params=params)
-            
+
             soup = BeautifulSoup(response.content, "html.parser")
-            
+
             drive_bot_link = None
             for link in soup.find_all("a"):
                 if "drivebot" in link.get("href"):
@@ -209,7 +203,7 @@ def get_movie_link(Model: Links):
 
         # Return a StreamingResponse with the generator
         return StreamingResponse(generate(), media_type="text/plain")
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:

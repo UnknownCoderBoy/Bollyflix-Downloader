@@ -1,4 +1,3 @@
 fastapi
 selenium
 webdriver_manager
-urllib

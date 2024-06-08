@@ -30,9 +30,7 @@ def create_driver():
     options.add_experimental_option("excludeSwitches", ["enable-automation"]) 
     options.add_experimental_option("useAutomationExtension", False)
 
-    return webdriver.Chrome(
-            service=Service(ChromeDriverManager().install()), options=options
-        )
+    return webdriver.Chrome(options=options)
 
 
 def page_loading(driver, url="", by=By.ID, value=""):

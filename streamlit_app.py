@@ -107,7 +107,7 @@ if st.session_state.show_download:
 if st.session_state.show_stream:
     st.write(st.session_state.title)
     with st.status("Working ...", expanded=True) as status:
-        url = "http://127.0.0.1:8000/GetMovieStreamLink"
+        url = "https://bollyflix-downloader.onrender.com/GetMovieStreamLink"
         data = {
             "MovieLink": st.session_state.url,
         }

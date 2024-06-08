@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import re
@@ -17,19 +17,22 @@ import requests
 from bs4 import BeautifulSoup
 from zenrows import ZenRowsClient
 
-options = Options()
-options.add_argument("--headless")
-options.add_argument("--no-sandbox")
-options.add_argument("--disable-dev-shm-usage")
-options.add_argument("--incognito")
-options.add_argument("--ignore-certificate-errors")
-options.add_argument("--remote-allow-origins=*")
-options.add_argument("--disable-blink-features=AutomationControlled")
- 
-options.add_experimental_option("excludeSwitches", ["enable-automation"]) 
-options.add_experimental_option("useAutomationExtension", False) 
+def create_driver():
+    options = Options()
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--incognito")
+    options.add_argument("--ignore-certificate-errors")
+    options.add_argument("--remote-allow-origins=*")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    
+    options.add_experimental_option("excludeSwitches", ["enable-automation"]) 
+    options.add_experimental_option("useAutomationExtension", False)
 
-driver = webdriver.Chrome(options=options)
+    return webdriver.Chrome(
+            service=Service(ChromeDriverManager().install()), options=options
+        )
 
 
 def page_loading(driver, url="", by=By.ID, value=""):
@@ -134,63 +137,82 @@ app = FastAPI()
 
 @app.post("/GetMovieStreamLink")
 def get_movie_link(Model: Links):
-    async def generate():
+    driver = create_driver()
+    
+    try:
+        async def generate():
 
-        page_loading(driver, Model.MovieLink, By.ID, "lite-human-verif-button")
-        driver.execute_script(
-            "document.getElementById('lite-human-verif-button').click();"
-        )
+            page_loading(driver, Model.MovieLink, By.ID, "lite-human-verif-button")
+            driver.execute_script(
+                "document.getElementById('lite-human-verif-button').click();"
+            )
 
-        yield "Verified"
+            yield "Verified"
 
-        original_window = driver.current_window_handle
+            original_window = driver.current_window_handle
 
-        page_loading(driver, "", By.ID, "lite-start-sora-button")
+            page_loading(driver, "", By.ID, "lite-start-sora-button")
 
-        driver.execute_script(
-            "document.getElementById('lite-end-sora-button').click();"
-        )
+            driver.execute_script(
+                "document.getElementById('lite-end-sora-button').click();"
+            )
 
-        yield "Download button Clicked"
+            yield "Download button Clicked"
 
-        # GDFlix Page
-        
-        gdflix_url = driver.current_url
+            # GDFlix Page
 
-        yield f"GDFlix Url {gdflix_url}"
-        
-        client = ZenRowsClient("2bfdb8003631ceb3f665e239ce6d9cfdc5e79945")
-        params = {"js_render":"true"}
-        response = client.get(gdflix_url, params=params)
-        
-        soup = BeautifulSoup(response.content, "html.parser")
-        
-        download_links = soup.find_all("a")
-        for link in download_links:
-              if "drivebot" in link.get("href"):
-                  drive_bot_link = link.get("href")
-                  break
-              else:
-                  yield "Not Drivebot Url"
-                  return
+            switch_to_new_window(driver, original_window)
 
-        # DriveBot Page
+            gdflix_url = driver.current_url
 
-        page_loading(driver, drive_bot_link, By.XPATH, "//button[@onclick]")
+            yield f"GDFlix Url {gdflix_url}"
+            
+            client = ZenRowsClient("2bfdb8003631ceb3f665e239ce6d9cfdc5e79945")
+            params = {"js_render":"true"}
+            response = client.get(gdflix_url, params=params)
+            
+            soup = BeautifulSoup(response.content, "html.parser")
+            
+            drive_bot_link = None
+            for link in soup.find_all("a"):
+                if "drivebot" in link.get("href"):
+                    drive_bot_link = link.get("href")
+                    break
 
-        parse_url = driver.current_url
+            if not drive_bot_link:
+                yield "Not Drivebot Url"
+                return
 
-        download_btns = driver.find_elements(By.XPATH, "//button[@onclick]")
+            # DriveBot Page
 
-        url_list = get_urls(parse_url, download_btns)
+            page_loading(driver, drive_bot_link, By.XPATH, "//button[@onclick]")
 
-        stream_url = drive_bot_server(driver, url_list[0])
+            parse_url = driver.current_url
 
-        yield stream_url
+            download_btns = driver.find_elements(By.XPATH, "//button[@onclick]")
 
-        yield "Done"
+            url_list = get_urls(parse_url, download_btns)
 
+            if not url_list:
+                yield "No URLs found"
+                return
+
+            for url in url_list:
+                try:
+                    stream_url = drive_bot_server(driver, url)
+                    if stream_url:
+                        yield stream_url
+                        break
+                except Exception as e:
+                    yield f"Error with URL {url}: {str(e)}"
+                    continue
+
+            yield "Done"
+
+        # Return a StreamingResponse with the generator
+        return StreamingResponse(generate(), media_type="text/plain")
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
         driver.quit()
-
-    # Return a StreamingResponse with the generator
-    return StreamingResponse(generate(), media_type="text/plain")

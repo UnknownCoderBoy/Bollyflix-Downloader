@@ -173,3 +173,13 @@ def get_movie_link(Model: Links):
 
     # Return a StreamingResponse with the generator
     return StreamingResponse(generate(), media_type="text/plain")
+
+@app.post("/GetLinkTitle")
+def get_movie_link(Model: Links):
+    async def generate():
+        yield "Working"
+        page_loading(driver, Model.MovieLink)
+        yield driver.title
+        driver.quit()
+        
+    return StreamingResponse(generate(), media_type="text/plain")

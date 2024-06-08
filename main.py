@@ -17,13 +17,12 @@ from bs4 import BeautifulSoup
 from zenrows import ZenRowsClient
 
 
-def create_driver():
-    options = Options()
-    options.add_argument("--headless")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
+options = Options()
+options.add_argument("--headless")
+options.add_argument("--no-sandbox")
+options.add_argument("--disable-dev-shm-usage")
 
-    return webdriver.Chrome(options=options)
+driver = webdriver.Chrome(options=options)
 
 
 def page_loading(driver, url="", by=By.ID, value=""):
@@ -128,8 +127,6 @@ app = FastAPI()
 
 @app.post("/GetMovieStreamLink")
 def get_movie_link(Model: Links):
-    driver = create_driver()
-
     try:
 
         async def generate():
@@ -206,5 +203,3 @@ def get_movie_link(Model: Links):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        driver.quit()

@@ -202,7 +202,7 @@ if st.session_state.show_stream:
         gdflix_url = None
 
         with st.spinner("Generating GDFlix Link ..."):
-            url = "http://127.0.0.1:8000/GetMovieStreamLink"
+            url = "https://bollyflix-downloader.onrender.com/GetMovieStreamLink"
             data = {
                 "MovieLink": st.session_state.url,
             }

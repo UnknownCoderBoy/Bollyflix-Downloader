@@ -1,6 +1,11 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
+from urllib.parse import urlparse, parse_qs
+import re
+
+# Cloudflare Unblocking
+from zenrows import ZenRowsClient
 
 
 def scrape_articles(search_query):
@@ -45,6 +50,81 @@ def article_quality(url):
     return links_data
 
 
+def get_drive_bot_urls(url):
+    urls = []
+    parsed_url = urlparse(url)
+    query_params = parse_qs(parsed_url.query)
+
+    # Extract 'id' and 'do' values
+    id_value = query_params.get("id", [None])[0]
+    do_value = query_params.get("do", [None])[0]
+
+    response = requests.get(url)
+    response.raise_for_status()  # Check if the request was successful
+
+    soup = BeautifulSoup(response.content, "html.parser")
+    buttons = soup.find_all("button", attrs={"onclick": True})
+
+    if id_value and do_value:
+        for btn in buttons:
+            onclick_attr = btn.get("onclick")
+            parts = onclick_attr.split(",")
+            baseUrl = parts[0].split("'")[-2]
+            print(f"Extracted URL: {baseUrl}")
+            download_url = f"{baseUrl}?id={id_value}&do={do_value}"
+            urls.append(download_url)
+    else:
+        print("ID or do parameter not found in the URL query.")
+
+    return urls
+
+
+def get_stream_url(url):
+    session = requests.Session()
+    response = session.get(url)
+    response.raise_for_status()  # Check if the request was successful
+
+    cookies = session.cookies.get_dict()
+    soup = BeautifulSoup(response.content, "html.parser")
+    script_tags = soup.find_all("script")
+
+    token = None
+    id = None
+    for script_tag in script_tags:
+        script_content = script_tag.string
+        if script_content:
+            token_match = re.search(r"append\('token', '([^']*)'", script_content)
+            id_match = re.search(r"id=([^&']*)", script_content)
+            if token_match and id_match:
+                token = token_match.group(1)
+                id = id_match.group(1)
+                break
+
+    if token and id:
+        print("Token:", token)
+        print("ID:", id)
+    else:
+        raise ValueError("Token or ID not found in the script tags.")
+
+    parsed_url = urlparse(url)
+    base_url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}"
+    data = {"token": token}
+    response = requests.post(f"{base_url}?id={id}", data=data, cookies=cookies)
+    response.raise_for_status()
+    return response.json()
+
+
+def get_zenrows_key():
+    jsonbin_url = "https://api.jsonbin.io/v3/b/66655a1de41b4d34e400ad84"
+    jsonbin_headers = {
+        "X-Master-Key": "$2a$10$Oge8KnqXh7O5yj25pv8dheB3OifTS1ZBdcXDzZdj3WsYvQqBKQEIq"
+    }
+
+    req = requests.get(jsonbin_url, json=None, headers=jsonbin_headers)
+    data = req.json()
+    return data["record"]["zenrows_api"]
+
+
 def get_stream_link(url):
     st.session_state.show_download = False
     st.session_state.show_stream = True
@@ -56,6 +136,19 @@ def get_quality(url, title):
     st.session_state.show_download = True
     st.session_state.title = title
     st.session_state.url = url
+
+
+st.set_page_config(page_title="BollyFlix Downloader", page_icon=":movie_camera:")
+
+
+st.markdown(
+    """<style>
+    .language-url {
+        color: #4997ed;
+    },
+</style>""",
+    unsafe_allow_html=True,
+)
 
 
 # Initialize session state
@@ -73,7 +166,6 @@ if "title" not in st.session_state:
 
 if "url" not in st.session_state:
     st.session_state.url = ""
-
 
 # Main app
 if st.session_state.show_articles:
@@ -106,20 +198,73 @@ if st.session_state.show_download:
 
 if st.session_state.show_stream:
     st.write(st.session_state.title)
-    with st.status("Working ...", expanded=True) as status:
-        url = "https://bollyflix-downloader.onrender.com/GetMovieStreamLink"
-        data = {
-            "MovieLink": st.session_state.url,
-        }
-        response = requests.post(url, json=data, stream=True)
-        if response.ok:
-            # Iterate over the response content in chunks
-            for chunk in response.iter_content(chunk_size=1024):
-                if chunk:
-                    # Process each chunk of data
-                    st.write(chunk.decode("utf-8"))  # Decode the chunk if it's in bytes
+    try:
+        with st.status("Working ...", expanded=True) as status:
+            url = "http://127.0.0.1:8000/GetMovieStreamLink"
+            data = {
+                "MovieLink": st.session_state.url,
+            }
+            response = requests.post(url, json=data, stream=True)
 
-            status.update(label="Download complete!", state="complete")
+            gdflix_url = None
+
+            if response.ok:
+                # Iterate over the response content in chunks
+                for chunk in response.iter_content(chunk_size=1024):
+                    if chunk:
+                        decoded_chunk = chunk.decode("utf-8")
+                        st.write(
+                            decoded_chunk
+                        )  # Optional: Display each chunk for debugging
+
+                        if "GDFlix Url" in decoded_chunk:
+                            gdflix_url = decoded_chunk.split("GDFlix Url: ")[1].strip()
+
+                status.update(label="GDFlix Link Generated!", state="complete")
+            else:
+                st.write(f"Error: {response.status_code} - {response.reason}")
+                status.update(label="Download Failed!", state="error")
+
+        drive_bot_link = None
+
+        with st.spinner("Generating Drive Bot Link..."):
+
+            zenrows_api = get_zenrows_key()
+
+            client = ZenRowsClient(zenrows_api)
+            params = {"js_render": "true"}
+            response = client.get(gdflix_url, params=params)
+
+            if not response.ok:
+                raise Exception(f"Zenrows Api Key")
+
+            soup = BeautifulSoup(response.content, "html.parser")
+
+            for link in soup.find_all("a"):
+                if "drivebot" in link.get("href"):
+                    drive_bot_link = link.get("href")
+                    break
+
+        if drive_bot_link:
+            with st.spinner("Generating Stream URL..."):
+                url_list = get_drive_bot_urls(drive_bot_link)
+
+                if url_list:
+                    for url in url_list:
+                        try:
+                            stream_url = get_stream_url(url)
+                            if stream_url:
+                                st.markdown("Stream URL")
+                                st.code(stream_url["url"], language="url")
+                                st.balloons()
+                                break
+                        except Exception as e:
+                            st.toast(f"Error with URL {url}: {str(e)}")
+                            continue
+                else:
+                    st.toast("No URLs found")
         else:
-            # Handle errors
-            print(f"Error: {response.status_code} - {response.reason}")
+            st.toast("No Drive Bot URL found")
+
+    except Exception as e:
+        st.toast(f"Error: {str(e)}")

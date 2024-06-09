@@ -199,31 +199,23 @@ if st.session_state.show_download:
 if st.session_state.show_stream:
     st.write(st.session_state.title)
     try:
-        with st.status("Working ...", expanded=True) as status:
-            url = "https://bollyflix-downloader.onrender.com/GetMovieStreamLink"
+        gdflix_url = None
+
+        with st.spinner("Generating GDFlix Link ..."):
+            url = "http://127.0.0.1:8000/GetMovieStreamLink"
             data = {
                 "MovieLink": st.session_state.url,
             }
             response = requests.post(url, json=data, stream=True)
 
-            gdflix_url = None
-
             if response.ok:
                 # Iterate over the response content in chunks
-                for chunk in response.iter_content(chunk_size=1024):
-                    if chunk:
-                        decoded_chunk = chunk.decode("utf-8")
-                        st.write(
-                            decoded_chunk
-                        )  # Optional: Display each chunk for debugging
+                response_json = response.json()
+                gdflix_url = response_json["url"]
+                st.write(f"GDFlix Url: {gdflix_url}")
 
-                        if "GDFlix Url" in decoded_chunk:
-                            gdflix_url = decoded_chunk.split("GDFlix Url: ")[1].strip()
-
-                status.update(label="GDFlix Link Generated!", state="complete")
             else:
-                st.write(f"Error: {response.status_code} - {response.reason}")
-                status.update(label="Download Failed!", state="error")
+                st.toast(f"Error: {response.status_code} - {response.reason}")
 
         drive_bot_link = None
 

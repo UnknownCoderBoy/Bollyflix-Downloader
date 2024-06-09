@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
@@ -62,37 +63,35 @@ app = FastAPI()
 def get_movie_link(Model: Links):
     try:
 
-        async def generate():
+        page_loading(driver, Model.MovieLink, By.ID, "lite-human-verif-button")
+        driver.execute_script(
+            "document.getElementById('lite-human-verif-button').click();"
+        )
 
-            page_loading(driver, Model.MovieLink, By.ID, "lite-human-verif-button")
-            driver.execute_script(
-                "document.getElementById('lite-human-verif-button').click();"
-            )
+        print("Verified")
 
-            yield "Verified"
+        original_window = driver.current_window_handle
 
-            original_window = driver.current_window_handle
+        page_loading(driver, "", By.ID, "lite-start-sora-button")
 
-            page_loading(driver, "", By.ID, "lite-start-sora-button")
+        driver.execute_script(
+            "document.getElementById('lite-end-sora-button').click();"
+        )
 
-            driver.execute_script(
-                "document.getElementById('lite-end-sora-button').click();"
-            )
+        print("Download button Clicked")
 
-            yield "Download button Clicked"
+        # GDFlix Page
 
-            # GDFlix Page
+        switch_to_new_window(driver, original_window)
 
-            switch_to_new_window(driver, original_window)
+        gdflix_url = driver.current_url
 
-            gdflix_url = driver.current_url
+        print(f"GDFlix Url: {gdflix_url}")
 
-            yield f"GDFlix Url: {gdflix_url}"
+        data = {"url": gdflix_url}
 
-            yield "Done"
-
-        # Return a StreamingResponse with the generator
-        return StreamingResponse(generate(), media_type="text/plain")
+        # Return a JSONResponse with the Url
+        return JSONResponse(content=jsonable_encoder(data), status_code=200)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -103,7 +102,8 @@ def update_api_key(Model: Keys):
     try:
 
         if Model.Pass != "Pass@123":
-            return {"message": "Incorrect password"}
+            data = {"message": "Incorrect password"}
+            return JSONResponse(content=jsonable_encoder(data), status_code=401)
 
         jsonbin_url = "https://api.jsonbin.io/v3/b/66655a1de41b4d34e400ad84"
         jsonbin_headers = {
@@ -116,7 +116,9 @@ def update_api_key(Model: Keys):
 
         print(response.json())
 
-        return {"message": "API key updated successfully"}
+        data = {"message": "API key updated successfully"}
+
+        return JSONResponse(content=jsonable_encoder(data), status_code=200)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
